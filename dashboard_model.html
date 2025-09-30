@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Dashboard - Online Fun Service</title>
+  <style>
+    body {font-family:'Poppins',sans-serif; margin:0; background:#f0f2f5;}
+    .header {
+      padding:20px; background:linear-gradient(90deg,#6a11cb,#2575fc);
+      color:white; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,0.2);
+    }
+    .section {
+      margin:20px; padding:20px; background:white; border-radius:12px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.1);
+    }
+    .grid {display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:15px;}
+    .card {
+      padding:15px; border-radius:10px; background:#fafafa;
+      border:1px solid #ddd; font-weight:500;
+    }
+    .button {
+      padding:8px 15px; border:none; border-radius:6px; cursor:pointer;
+      background:linear-gradient(90deg,#6a11cb,#2575fc); color:white; font-weight:600;
+    }
+    .button:hover {opacity:0.9;}
+    img, video {border-radius:10px;}
+    #preview img, #preview video, #mediaGallery img, #mediaGallery video {
+      margin:5px; border:2px solid #6a11cb;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h2>🌸 Model Dashboard</h2>
+</div>
+
+<div class="section" style="text-align:center;">
+  <img id="profilePhoto" src="https://via.placeholder.com/120" width="120" height="120" style="border-radius:50%;object-fit:cover;">
+  <br><br>
+  <strong id="modelName" style="font-size:18px;display:block;margin-bottom:10px;">Model Name</strong>
+  <input type="file" id="profileFile" accept="image/*"><br><br>
+  <button class="button" onclick="uploadProfilePhoto()">Change Profile</button>
+  <div class="grid" style="margin-top:15px;">
+    <div class="card">📱 Mobile: <span id="modelMobile"></span></div>
+    <div class="card">📧 Email: <span id="modelEmail"></span></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>📸 Upload Photos & Videos</h3>
+  <input type="file" id="mediaUpload" multiple><br><br>
+  <div id="preview" style="display:flex;flex-wrap:wrap;"></div>
+  <button class="button" onclick="uploadMedia()">Upload</button>
+  <h4 style="margin-top:15px;">Your Gallery</h4>
+  <div id="mediaGallery" style="display:flex;flex-wrap:wrap;"></div>
+</div>
+
+<div class="section">
+  <h3>📞 Call Requests</h3>
+  <table border="1" width="100%" cellpadding="8" style="border-collapse:collapse;">
+    <thead style="background:#6a11cb;color:white;">
+      <tr><th>User</th><th>Action</th></tr>
+    </thead>
+    <tbody id="callRequests"></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h3>💰 Earnings</h3>
+  <p>1 Love = ₹1</p>
+  <p>Total Earnings: <span id="earnings">0</span> Love</p>
+  <button class="button" onclick="showWithdraw()">Withdraw</button>
+</div>
+
+<div class="section" id="withdrawSection" style="display:none;">
+  <h3>🏦 Withdraw Setup</h3>
+  <button class="button" onclick="showUPI()">Link UPI</button>
+  <button class="button" onclick="showBank()">Link Bank</button>
+
+  <div id="upiForm" style="display:none;margin-top:10px;">
+    <input type="text" id="upiId" placeholder="Enter UPI ID"><br><br>
+    <button class="button" onclick="saveUPI()">Save</button>
+  </div>
+
+  <div id="bankForm" style="display:none;margin-top:10px;">
+    <input type="text" id="bankName" placeholder="Full Name"><br><br>
+    <input type="text" id="accountNumber" placeholder="Account Number"><br><br>
+    <input type="text" id="ifsc" placeholder="IFSC Code"><br><br>
+    <input type="text" id="bankMobile" placeholder="Mobile"><br><br>
+    <button class="button" onclick="saveBank()">Save</button>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
+<script>
+// 🔹 Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyCf6oj1SwC9FIetbI_TAxKNmpx0qm4zrvQ",
+  authDomain: "puja-fun-service.firebaseapp.com",
+  databaseURL: "https://puja-fun-service-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "puja-fun-service",
+  storageBucket: "puja-fun-service.appspot.com",
+  messagingSenderId: "559424092727",
+  appId: "1:559424092727:web:35f7180b49b0a748c95db2"
+};
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.database();
+const storage = firebase.storage();
+let currentUserId = null;
+
+// ---------------- Profile Load ----------------
+auth.onAuthStateChanged(user=>{
+  if(user){
+    currentUserId = user.uid;
+    document.getElementById("modelEmail").innerText = user.email;
+    db.ref("users/"+currentUserId).once("value").then(snap=>{
+      const data = snap.val();
+      if(data){
+        document.getElementById("modelMobile").innerText = data.mobile || "";
+        document.getElementById("modelName").innerText = data.fullname || "Model";
+        if(data.photoURL){ document.getElementById("profilePhoto").src = data.photoURL; }
+      }
+    });
+    loadCallRequests();
+    loadEarnings();
+    loadMediaGallery();
+  } else {
+    alert("Please login first!");
+    window.location.href="login.html";
+  }
+});
+
+// ---------------- Profile Photo Upload ----------------
+function uploadProfilePhoto(){
+  const file = document.getElementById("profileFile").files[0];
+  if(!file) return alert("Choose a photo first!");
+  const ref = storage.ref("profiles/"+currentUserId+".jpg");
+  ref.put(file).then(()=>{
+    ref.getDownloadURL().then(url=>{
+      db.ref("users/"+currentUserId).update({photoURL:url});
+      document.getElementById("profilePhoto").src = url;
+    });
+  });
+}
+
+// ---------------- Preview Media ----------------
+document.getElementById("mediaUpload").addEventListener("change", (e)=>{
+  const files = e.target.files;
+  const preview = document.getElementById("preview");
+  preview.innerHTML = "";
+  for(let file of files){
+    const reader = new FileReader();
+    reader.onload = function(ev){
+      let el;
+      if(file.type.startsWith("image/")){
+        el=document.createElement("img");
+        el.src=ev.target.result;
+        el.style.width="100px"; el.style.height="100px";
+        el.style.objectFit="cover"; 
+      } else {
+        el=document.createElement("video");
+        el.src=ev.target.result; el.controls=true; el.style.width="150px";
+      }
+      preview.appendChild(el);
+    };
+    reader.readAsDataURL(file);
+  }
+});
+
+// ---------------- Upload Media ----------------
+function uploadMedia(){
+  const files = document.getElementById("mediaUpload").files;
+  if(files.length===0){alert("Select files first!");return;}
+  for(let file of files){
+    const ref = storage.ref("media/"+currentUserId+"/"+Date.now()+"_"+file.name);
+    ref.put(file).then(()=>{
+      ref.getDownloadURL().then(url=>{
+        db.ref("media/"+currentUserId).push({url, type:file.type});
+        loadMediaGallery();
+      });
+    });
+  }
+}
+
+// ---------------- Load Gallery ----------------
+function loadMediaGallery(){
+  const gallery=document.getElementById("mediaGallery");
+  gallery.innerHTML="";
+  db.ref("media/"+currentUserId).once("value").then(snap=>{
+    snap.forEach(item=>{
+      const data=item.val();
+      let el;
+      if(data.type.startsWith("image/")){
+        el=document.createElement("img"); el.src=data.url; el.style.width="100px"; el.style.margin="5px";
+      } else {
+        el=document.createElement("video"); el.src=data.url; el.controls=true; el.style.width="150px"; el.style.margin="5px";
+      }
+      gallery.appendChild(el);
+    });
+  });
+}
+
+// ---------------- Call Requests ----------------
+function loadCallRequests(){
+  const tbody=document.getElementById("callRequests");
+  tbody.innerHTML="";
+  db.ref("callRequests").orderByChild("to").equalTo(currentUserId).on("child_added",snap=>{
+    const req=snap.val();
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${req.fromName}</td>
+      <td>
+        <button class="button" onclick="acceptCall('${snap.key}')">Accept</button>
+        <button class="button" onclick="rejectCall('${snap.key}')">Reject</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+function acceptCall(id){ db.ref("callRequests/"+id).update({status:"accepted"}); }
+function rejectCall(id){ db.ref("callRequests/"+id).update({status:"rejected"}); }
+
+// ---------------- Earnings ----------------
+function loadEarnings(){
+  db.ref("earnings/"+currentUserId).on("value",snap=>{
+    document.getElementById("earnings").innerText=snap.val()?.total || 0;
+  });
+}
+
+// ---------------- Withdraw ----------------
+function showWithdraw(){ document.getElementById("withdrawSection").style.display="block"; }
+function showUPI(){ document.getElementById("upiForm").style.display="block"; document.getElementById("bankForm").style.display="none"; }
+function showBank(){ document.getElementById("bankForm").style.display="block"; document.getElementById("upiForm").style.display="none"; }
+function saveUPI(){
+  const upi=document.getElementById("upiId").value;
+  if(!upi) return alert("Enter UPI ID!");
+  db.ref("withdraw/"+currentUserId).set({type:"upi",upi});
+  alert("UPI Linked!");
+}
+function saveBank(){
+  const data={
+    type:"bank",
+    name:document.getElementById("bankName").value,
+    account:document.getElementById("accountNumber").value,
+    ifsc:document.getElementById("ifsc").value,
+    mobile:document.getElementById("bankMobile").value
+  };
+  db.ref("withdraw/"+currentUserId).set(data);
+  alert("Bank Linked!");
+}
+</script>
+</body>
+</html>

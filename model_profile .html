@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Model Profile & Call</title>
+<style>
+body{font-family:'Poppins',sans-serif;background:#ff416c;color:white;margin:0;padding:20px;}
+.container{max-width:500px;margin:auto;}
+img, video{width:100%;border-radius:10px;margin-bottom:10px;}
+button{padding:10px 15px;margin:5px;border:none;border-radius:6px;background:#2575fc;color:white;cursor:pointer;}
+#localVideo, #remoteVideo{width:100%;height:250px;background:black;margin-top:10px;}
+</style>
+</head>
+<body>
+
+<div class="container">
+<h2 id="name">Loading...</h2>
+<div id="media"></div>
+
+<div id="actions">
+  <button id="videoCall" disabled onclick="payThenCall('video')">Video Call</button>
+  <button id="audioCall" disabled onclick="payThenCall('audio')">Audio Call</button>
+  <button onclick="chat()">Chat</button>
+  <button onclick="gift()">Gift</button>
+</div>
+
+<video id="localVideo" autoplay muted></video>
+<video id="remoteVideo" autoplay></video>
+
+<button onclick="goBack()">Back</button>
+</div>
+
+<!-- Firebase & Razorpay -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<script>
+// 🔹 Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyCf6oj1SwC9FIetbI_TAxKNmpx0qm4zrvQ",
+  authDomain: "puja-fun-service.firebaseapp.com",
+  databaseURL: "https://puja-fun-service-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "puja-fun-service",
+  storageBucket: "puja-fun-service.appspot.com",
+  messagingSenderId: "559424092727",
+  appId: "1:559424092727:web:35f7180b49b0a748c95db2"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// 🔹 Get logged user
+let loggedUser = JSON.parse(localStorage.getItem("loggedUser"));
+if(!loggedUser){ alert("Login first"); window.location.href="login.html"; }
+
+// 🔹 Get model UID from URL
+const urlParams = new URLSearchParams(window.location.search);
+const modelUid = urlParams.get("uid");
+let modelData;
+
+// 🔹 Load model data
+db.ref("users/"+modelUid).once("value").then(snap=>{
+  modelData = snap.val();
+  document.getElementById("name").innerText = modelData.fullname;
+
+  const mediaDiv = document.getElementById("media");
+  if(modelData.photos) modelData.photos.forEach(p=>mediaDiv.innerHTML+=`<img src="${p}">`);
+  if(modelData.videos) modelData.videos.forEach(v=>mediaDiv.innerHTML+=`<video src="${v}" controls></video>`);
+
+  checkPayment();
+});
+
+// 🔹 Check if user already paid
+function checkPayment(){
+  db.ref("payments").orderByChild("user").equalTo(loggedUser.uid).once("value", snap=>{
+    let paid=false;
+    snap.forEach(s=>{
+      const p = s.val();
+      if(p.model === modelUid && p.status==="success"){
+        paid = true;
+      }
+    });
+    if(paid){
+      document.getElementById("videoCall").disabled=false;
+      document.getElementById("audioCall").disabled=false;
+    }
+  });
+}
+
+// 🔹 Payment then call
+function payThenCall(type){
+  let options = {
+    key: "RAZORPAY_KEY", // Replace with your Razorpay key
+    amount: 10000, // ₹100
+    currency: "INR",
+    name: "Online Fun Service",
+    description: type+" Call",
+    handler: function(response){
+      const callId = Date.now()+"_"+loggedUser.uid;
+      // Save payment + create call request
+      db.ref("payments").push({
+        user: loggedUser.uid,
+        model: modelUid,
+        amount: 100,
+        status: "success",
+        paymentId: response.razorpay_payment_id,
+        type: type
+      }).then(()=>{
+        db.ref("calls/"+callId).set({
+          from: loggedUser.uid,
+          to: modelUid,
+          type: type,
+          status: "pending",
+          timestamp: Date.now()
+        });
+        document.getElementById("videoCall").disabled=false;
+        document.getElementById("audioCall").disabled=false;
+        alert("Payment Successful! Call request sent. Waiting for response...");
+      });
+    }
+  };
+  let rzp = new Razorpay(options);
+  rzp.open();
+}
+
+// 🔹 Listen for incoming calls (both User & Model)
+db.ref("calls").on("child_added", snap=>{
+  const call = snap.val();
+  const callId = snap.key;
+
+  if(call.to === loggedUser.uid && call.status==="pending"){
+    let accept = confirm("Incoming "+call.type+" call from "+call.from+". Accept?");
+    if(accept){
+      db.ref("calls/"+callId).update({status:"accepted"});
+      startCall(call.type, call.from, call.to, callId);
+    }
+  }
+});
+
+// 🔹 Listen for accepted calls initiated by this user
+db.ref("calls").on("child_changed", snap=>{
+  const call = snap.val();
+  const callId = snap.key;
+  if(call.from === loggedUser.uid && call.status==="accepted"){
+    startCall(call.type, call.from, call.to, callId);
+  }
+});
+
+// 🔹 WebRTC Setup
+let localStream, peerConnection;
+const servers = {iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
+const localVideo = document.getElementById("localVideo");
+const remoteVideo = document.getElementById("remoteVideo");
+
+async function startCall(type, fromUid, toUid, callId){
+  localStream = await navigator.mediaDevices.getUserMedia({video:type==='video',audio:true});
+  localVideo.srcObject = localStream;
+
+  peerConnection = new RTCPeerConnection(servers);
+  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+  peerConnection.ontrack = event => { remoteVideo.srcObject = event.streams[0]; };
+
+  // Firebase signaling
+  const callRef = db.ref("calls/"+callId+"/signal");
+
+  peerConnection.onicecandidate = event => {
+    if(event.candidate){
+      callRef.push({candidate:event.candidate});
+    }
+  };
+
+  // Listen for remote candidates & SDP
+  callRef.on("child_added", snap=>{
+    const data = snap.val();
+    if(data.sdp){
+      peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      if(data.sdp.type==="offer"){
+        peerConnection.createAnswer().then(answer=>{
+          peerConnection.setLocalDescription(answer);
+          callRef.push({sdp:answer});
+        });
+      }
+    } else if(data.candidate){
+      peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    }
+  });
+
+  // Create offer if caller
+  if(fromUid===loggedUser.uid){
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    callRef.push({sdp:offer});
+  }
+}
+
+// 🔹 Placeholder functions
+function chat(){ alert("Open chat with "+modelData.fullname); }
+function gift(){ alert("Send gift to "+modelData.fullname); }
+function goBack(){ window.location.href="dashboard_user.html"; }
+</script>
+
+</body>
+</html>

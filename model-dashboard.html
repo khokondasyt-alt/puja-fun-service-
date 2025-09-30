@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Dashboard</title>
+  <style>
+    body {font-family: 'Poppins', sans-serif; margin:0; background:#f5f5f5;}
+    .header {padding:20px; background:#6a11cb; color:white; text-align:center;}
+    .sub-header {padding:10px; background:#9c27b0; color:white; text-align:center; font-size:14px;}
+    .profile {text-align:center; padding:20px;}
+    .profile img {width:120px; height:120px; border-radius:50%; object-fit:cover;}
+    .grid {display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:15px; margin:20px;}
+    .card {background:white; padding:15px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.1);}
+    .card h3 {margin-top:0; font-size:18px; color:#6a11cb;}
+    .button {padding:8px 15px; background:#6a11cb; color:white; border:none; border-radius:5px; cursor:pointer;}
+    .button.reject{background:#f44336;}
+    .button.accept{background:#4caf50;}
+    .input {width:100%; padding:8px; margin:6px 0; border:1px solid #ddd; border-radius:5px;}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Model Dashboard</h1>
+</div>
+<div class="sub-header">Welcome, Manage your profile and earnings</div>
+
+<div class="profile">
+  <img id="profilePhoto" src="default.png" alt="Profile Photo">
+  <br>
+  <input type="file" id="profileUpload" style="margin:10px;">
+  <p><strong>Mobile:</strong> <span id="mobile"></span> <br>
+     <strong>Email:</strong> <span id="email"></span></p>
+</div>
+
+<div class="grid">
+
+  <!-- Upload Photos/Videos -->
+  <div class="card">
+    <h3>Upload Photos & Videos</h3>
+    <input type="file" id="mediaUpload" class="input" multiple>
+    <button class="button" onclick="uploadMedia()">Upload</button>
+    <div id="mediaGallery" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- Call Requests -->
+  <div class="card">
+    <h3>Call Requests</h3>
+    <div id="callRequests"></div>
+  </div>
+
+  <!-- Chat -->
+  <div class="card">
+    <h3>Chat with Users</h3>
+    <div id="chatBox" style="height:150px; overflow-y:auto; border:1px solid #ddd; padding:5px; border-radius:5px;"></div>
+    <input type="text" id="chatInput" class="input" placeholder="Type message...">
+    <button class="button" onclick="sendChat()">Send</button>
+  </div>
+
+  <!-- Earnings -->
+  <div class="card">
+    <h3>Earnings</h3>
+    <p>1 Love = ₹1</p>
+    <p>Call Price (set by Admin): <strong id="callPrice">--</strong></p>
+    <p>Total Earnings: <strong id="earnings">₹0</strong></p>
+    <button id="withdrawBtn" class="button" style="display:none;">Withdraw</button>
+  </div>
+
+  <!-- Bank/UPI Linking -->
+  <div class="card">
+    <h3>Link Bank / UPI</h3>
+    <button class="button" onclick="toggleUpi()">Link UPI</button>
+    <button class="button" onclick="toggleBank()">Link Bank</button>
+
+    <div id="upiForm" style="display:none; margin-top:10px;">
+      <input type="text" id="upiId" class="input" placeholder="UPI ID">
+      <button class="button" onclick="saveUpi()">Save UPI</button>
+    </div>
+
+    <div id="bankForm" style="display:none; margin-top:10px;">
+      <input type="text" id="bankName" class="input" placeholder="Full Name">
+      <input type="text" id="accountNumber" class="input" placeholder="Account Number">
+      <input type="text" id="ifsc" class="input" placeholder="IFSC Code">
+      <input type="text" id="bankMobile" class="input" placeholder="Mobile Number">
+      <button class="button" onclick="saveBank()">Save Bank Details</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
+<script>
+  // 🔹 Firebase Config
+  const firebaseConfig = {
+    apiKey: "AIzaSyCf6oj1SwC9FIetbI_TAxKNmpx0qm4zrvQ",
+    authDomain: "puja-fun-service.firebaseapp.com",
+    databaseURL: "https://puja-fun-service-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "puja-fun-service",
+    storageBucket: "puja-fun-service.appspot.com",
+    messagingSenderId: "559424092727",
+    appId: "1:559424092727:web:35f7180b49b0a748c95db2"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
+  const storage = firebase.storage();
+
+  let currentUserId = null;
+
+  // 🔹 Auth Listener
+  auth.onAuthStateChanged(user=>{
+    if(user){
+      currentUserId = user.uid;
+      document.getElementById("email").innerText = user.email;
+
+      // Load user data
+      db.ref("users/"+currentUserId).once("value").then(snap=>{
+        const data = snap.val();
+        document.getElementById("mobile").innerText = data.mobile || "";
+        if(data.profilePhoto){
+          document.getElementById("profilePhoto").src = data.profilePhoto;
+        }
+        if(data.earnings){ document.getElementById("earnings").innerText = "₹"+data.earnings; }
+        if(data.payment){ document.getElementById("withdrawBtn").style.display="block"; }
+      });
+
+      // Load Call Price
+      db.ref("settings/callPrice").on("value", snap=>{
+        document.getElementById("callPrice").innerText = snap.val()+" Love/min";
+      });
+
+      // Load Call Requests
+      db.ref("callRequests").orderByChild("to").equalTo(currentUserId).on("child_added", snap=>{
+        const req = snap.val();
+        const div = document.createElement("div");
+        div.innerHTML = `${req.fromName} 
+          <button class="button accept" onclick="acceptCall('${snap.key}')">Accept</button>
+          <button class="button reject" onclick="rejectCall('${snap.key}')">Reject</button>`;
+        document.getElementById("callRequests").appendChild(div);
+      });
+
+      // Load Chats
+      db.ref("chats").orderByChild("to").equalTo(currentUserId).on("child_added", snap=>{
+        const chat = snap.val();
+        document.getElementById("chatBox").innerHTML += `<p><strong>${chat.fromName}:</strong> ${chat.message}</p>`;
+      });
+
+    } else {
+      window.location.href="login.html";
+    }
+  });
+
+  // 🔹 Profile Photo Upload
+  document.getElementById("profileUpload").addEventListener("change", e=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const ref = storage.ref("profiles/"+currentUserId+".jpg");
+    ref.put(file).then(()=>{
+      ref.getDownloadURL().then(url=>{
+        db.ref("users/"+currentUserId).update({profilePhoto:url});
+        document.getElementById("profilePhoto").src=url;
+      });
+    });
+  });
+
+  // 🔹 Media Upload
+  function uploadMedia(){
+    const files = document.getElementById("mediaUpload").files;
+    for(let i=0;i<files.length;i++){
+      const ref = storage.ref("media/"+currentUserId+"/"+Date.now()+"_"+files[i].name);
+      ref.put(files[i]).then(()=>{
+        ref.getDownloadURL().then(url=>{
+          db.ref("media/"+currentUserId).push({url});
+          const img = document.createElement("img");
+          img.src=url; img.style.width="100px"; img.style.margin="5px";
+          document.getElementById("mediaGallery").appendChild(img);
+        });
+      });
+    }
+  }
+
+  // 🔹 Call Actions
+  function acceptCall(id){ db.ref("callRequests/"+id).update({status:"accepted"}); }
+  function rejectCall(id){ db.ref("callRequests/"+id).update({status:"rejected"}); }
+
+  // 🔹 Chat
+  function sendChat(){
+    const msg = document.getElementById("chatInput").value;
+    if(!msg) return;
+    db.ref("chats").push({
+      from: currentUserId,
+      fromName:"Model",
+      to:"admin",
+      message: msg,
+      time: Date.now()
+    });
+    document.getElementById("chatBox").innerHTML += `<p><strong>You:</strong> ${msg}</p>`;
+    document.getElementById("chatInput").value="";
+  }
+
+  // 🔹 Bank/UPI
+  function toggleUpi(){ document.getElementById("upiForm").style.display="block"; document.getElementById("bankForm").style.display="none"; }
+  function toggleBank(){ document.getElementById("bankForm").style.display="block"; document.getElementById("upiForm").style.display="none"; }
+
+  function saveUpi(){
+    const upi = document.getElementById("upiId").value;
+    if(!upi) return;
+    db.ref("users/"+currentUserId+"/payment").set({type:"upi", id:upi});
+    document.getElementById("withdrawBtn").style.display="block";
+    alert("UPI Linked!");
+  }
+  function saveBank(){
+    const data = {
+      type:"bank",
+      name:document.getElementById("bankName").value,
+      account:document.getElementById("accountNumber").value,
+      ifsc:document.getElementById("ifsc").value,
+      mobile:document.getElementById("bankMobile").value
+    };
+    db.ref("users/"+currentUserId+"/payment").set(data);
+    document.getElementById("withdrawBtn").style.display="block";
+    alert("Bank Linked!");
+  }
+</script>
+
+</body>
+</html>

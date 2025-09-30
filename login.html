@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - Online Fun Service</title>
+<style>
+body{font-family:'Poppins',sans-serif; background:#6a11cb; color:white; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;}
+.box{background:rgba(0,0,0,0.6); padding:30px; border-radius:15px; width:100%; max-width:350px; text-align:center;}
+input{width:100%; padding:10px; margin:8px 0; border:none; border-radius:8px;}
+button{width:100%; padding:12px; margin-top:15px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; background:#ff4b2b; color:white;}
+.link{margin-top:15px; font-size:14px; color:#ddd;}
+.link a{color:#ffcc00; text-decoration:none; font-weight:bold;}
+</style>
+</head>
+<body>
+<div class="box">
+<h2>Login</h2>
+<input type="text" id="mobile" placeholder="Mobile Number" required>
+<input type="password" id="password" placeholder="Password" required>
+<button onclick="loginUser()">Login</button>
+<div class="link">Don't have an account? <a href="register.html">Register here</a></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<script>
+const firebaseConfig={
+  apiKey:"AIzaSyCf6oj1SwC9FIetbI_TAxKNmpx0qm4zrvQ",
+  authDomain:"puja-fun-service.firebaseapp.com",
+  databaseURL:"https://puja-fun-service-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"puja-fun-service",
+  storageBucket:"puja-fun-service.appspot.com",
+  messagingSenderId:"559424092727",
+  appId:"1:559424092727:web:35f7180b49b0a748c95db2"
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+
+function loginUser(){
+  const mobile=document.getElementById("mobile").value.trim();
+  const password=document.getElementById("password").value;
+  if(!mobile || !password){ alert("Fill all fields"); return; }
+
+  db.ref("users").orderByChild("mobile").equalTo(mobile).once("value", snapshot=>{
+    if(snapshot.exists()){
+      const userData=Object.values(snapshot.val())[0];
+      if(userData.password===password){
+        if(userData.role==="model" && userData.status==="pending"){
+          alert("Account pending admin approval");
+        } else {
+          localStorage.setItem("loggedUser",JSON.stringify(userData));
+          if(userData.role==="male" || userData.role==="normal_user"){
+            window.location.href="dashboard_user.html";
+          } else if(userData.role==="model" && userData.status==="active"){
+            window.location.href="dashboard_model.html";
+          }
+        }
+      } else { alert("Incorrect password"); }
+    } else { alert("Mobile not registered"); }
+  });
+}
+</script>
+</body>
+</html>

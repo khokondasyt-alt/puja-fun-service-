@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Model Profile - Online Fun Service</title>
+<style>
+body {font-family: 'Poppins', sans-serif; margin:0; background:#f5f5f5;}
+.header {padding:20px; background:#6a11cb; color:white; text-align:center;}
+.section {padding:20px; margin:10px; background:white; border-radius:10px;}
+.table {width:100%; border-collapse:collapse;}
+.table th, .table td {padding:10px; border:1px solid #ddd; text-align:left;}
+.button {padding:6px 12px; border:none; border-radius:5px; cursor:pointer; margin-right:5px;}
+.button.approve{background:#4caf50;color:white;}
+.button.reject{background:#f44336;color:white;}
+.button.back{background:#2196f3;color:white;}
+.monitor-section button{margin-right:10px; margin-top:5px;}
+#monitorPanel{margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:5px; background:#fafafa;}
+</style>
+</head>
+<body>
+
+<div class="header">
+<h1>Admin - Model Profile</h1>
+<button class="button back" onclick="goBack()">← Back to Dashboard</button>
+</div>
+
+<div class="section">
+<h2>Model Details</h2>
+<p><strong>Full Name:</strong> <span id="fullname"></span></p>
+<p><strong>Email:</strong> <span id="email"></span></p>
+<p><strong>Mobile:</strong> <span id="mobile"></span></p>
+<p><strong>Status:</strong> <span id="status"></span></p>
+<p><strong>Role:</strong> <span id="role"></span></p>
+<p><strong>Plans:</strong></p>
+<ul id="plansList"></ul>
+</div>
+
+<div class="section monitor-section">
+<h2>Live Monitoring</h2>
+<button onclick="monitorLiveVideo()">Video Calls</button>
+<button onclick="monitorLiveAudio()">Audio Calls</button>
+<button onclick="monitorChats()">Chats</button>
+<button onclick="monitorTransactions()">Transactions</button>
+<div id="monitorPanel"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+// 🔹 Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyCf6oj1SwC9FIetbI_TAxKNmpx0qm4zrvQ",
+  authDomain: "puja-fun-service.firebaseapp.com",
+  databaseURL: "https://puja-fun-service-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "puja-fun-service",
+  storageBucket: "puja-fun-service.appspot.com",
+  messagingSenderId: "559424092727",
+  appId: "1:559424092727:web:35f7180b49b0a748c95db2"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// -------------------- Get UID from URL --------------------
+const urlParams = new URLSearchParams(window.location.search);
+const uid = urlParams.get('uid');
+
+if(!uid){
+  alert("No model UID found!");
+  window.location.href="admin_dashboard.html";
+}
+
+// -------------------- Load Model Details --------------------
+db.ref("users/" + uid).once("value").then(snapshot=>{
+  const user = snapshot.val();
+  if(user){
+    document.getElementById("fullname").innerText = user.fullname;
+    document.getElementById("email").innerText = user.email;
+    document.getElementById("mobile").innerText = user.mobile;
+    document.getElementById("status").innerText = user.status;
+    document.getElementById("role").innerText = user.role;
+    
+    // Example Plans
+    const plans = user.plans || [
+      {type:"Video Call", duration:"10 min", cost:"300 Love"},
+      {type:"Audio Call", duration:"5 min", cost:"150 Love"}
+    ];
+    const plansList = document.getElementById("plansList");
+    plans.forEach(plan=>{
+      const li = document.createElement("li");
+      li.innerText = `${plan.type} - ${plan.duration} - ${plan.cost}`;
+      plansList.appendChild(li);
+    });
+  }
+});
+
+// -------------------- Monitoring Functions --------------------
+function monitorLiveVideo(){
+  document.getElementById("monitorPanel").innerHTML="Live Video Calls:<br>";
+  db.ref("calls").orderByChild("to").equalTo(uid).on("child_added", snap=>{
+    const call = snap.val();
+    if(call.type==="video"){
+      document.getElementById("monitorPanel").innerHTML +=
+      `From: ${call.from} → Status: ${call.status}<br>`;
+    }
+  });
+}
+function monitorLiveAudio(){
+  document.getElementById("monitorPanel").innerHTML="Live Audio Calls:<br>";
+  db.ref("calls").orderByChild("to").equalTo(uid).on("child_added", snap=>{
+    const call = snap.val();
+    if(call.type==="audio"){
+      document.getElementById("monitorPanel").innerHTML +=
+      `From: ${call.from} → Status: ${call.status}<br>`;
+    }
+  });
+}
+function monitorChats(){
+  document.getElementById("monitorPanel").innerHTML="Chats:<br>";
+  db.ref("chats").orderByChild("to").equalTo(uid).on("child_added", snap=>{
+    const chat = snap.val();
+    document.getElementById("monitorPanel").innerHTML +=
+      `From: ${chat.from}: ${chat.message}<br>`;
+  });
+}
+function monitorTransactions(){
+  document.getElementById("monitorPanel").innerHTML="Transactions:<br>";
+  db.ref("transactions").orderByChild("modelId").equalTo(uid).once("value").then(snapshot=>{
+    snapshot.forEach(snap=>{
+      const txn = snap.val();
+      document.getElementById("monitorPanel").innerHTML +=
+        `User: ${txn.userId} | Type: ${txn.type} | Amount: ${txn.amount} Love | Status: ${txn.status}<br>`;
+    });
+  });
+}
+
+// -------------------- Back Button --------------------
+function goBack(){
+  window.location.href="admin_dashboard.html";
+}
+</script>
+</body>
+</html>

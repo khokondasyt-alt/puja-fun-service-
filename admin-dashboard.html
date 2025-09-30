@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Dashboard - Online Fun Service</title>
+<style>
+body {font-family: 'Poppins', sans-serif; margin:0; background:#f5f5f5;}
+.header {padding:20px; background:#6a11cb; color:white; text-align:center;}
+.section {padding:20px; margin:10px; background:white; border-radius:10px;}
+.table {width:100%; border-collapse:collapse;}
+.table th, .table td {padding:10px; border:1px solid #ddd; text-align:left;}
+.button {padding:6px 12px; border:none; border-radius:5px; cursor:pointer; margin-right:5px;}
+.button.approve{background:#4caf50;color:white;}
+.button.reject{background:#f44336;color:white;}
+.button.block{background:#ff5722;color:white;}
+.button.unblock{background:#2196f3;color:white;}
+.button.view{background:#9c27b0;color:white;}
+.monitor-section{margin-top:20px;}
+.monitor-section button{margin-right:10px;}
+#monitorPanel{margin-top:10px; padding:10px; border:1px solid #ddd; border-radius:5px; background:#fafafa;}
+</style>
+</head>
+<body>
+
+<div class="header">
+<h1>Admin Dashboard</h1>
+<p>Manage Models, Users & Monitor Calls/Chats</p>
+</div>
+
+<div class="section">
+<h2>Models List</h2>
+<table class="table" id="modelsTable">
+<thead>
+<tr><th>Full Name</th><th>Email</th><th>Status</th><th>Action</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+<div class="section">
+<h2>Users List</h2>
+<table class="table" id="usersTable">
+<thead>
+<tr><th>Full Name</th><th>Email</th><th>Status</th><th>Action</th></tr>
+</thead>
+<tbody></tbody>
+</table>
+</div>
+
+<div class="section monitor-section">
+<h2>Live Monitoring</h2>
+<button onclick="monitorLiveVideo()">Live Video Calls</button>
+<button onclick="monitorLiveAudio()">Live Audio Calls</button>
+<button onclick="monitorChats()">Chats</button>
+<button onclick="monitorTransactions()">Transactions</button>
+<div id="monitorPanel"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+// 🔹 Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyCf6oj1SwC9FIetbI_TAxKNmpx0qm4zrvQ",
+  authDomain: "puja-fun-service.firebaseapp.com",
+  databaseURL: "https://puja-fun-service-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "puja-fun-service",
+  storageBucket: "puja-fun-service.appspot.com",
+  messagingSenderId: "559424092727",
+  appId: "1:559424092727:web:35f7180b49b0a748c95db2"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+// -------------------- Models List --------------------
+function loadModels(){
+  const tableBody = document.querySelector("#modelsTable tbody");
+  tableBody.innerHTML = "";
+  db.ref("users").orderByChild("role").equalTo("model").on("value", snapshot=>{
+    snapshot.forEach(userSnap=>{
+      const user = userSnap.val();
+      const uid = userSnap.key;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${user.fullname}</td>
+        <td>${user.email}</td>
+        <td>${user.status}</td>
+        <td>
+          ${user.status==="pending"?`<button class="button approve" onclick="approveModel('${uid}')">Approve</button>
+          <button class="button reject" onclick="rejectModel('${uid}')">Reject</button>`:"Approved"}
+          <button class="button view" onclick="viewModelProfile('${uid}')">View Profile</button>
+        </td>
+      `;
+      tableBody.appendChild(tr);
+    });
+  });
+}
+
+// -------------------- Users List --------------------
+function loadUsers(){
+  const tableBody = document.querySelector("#usersTable tbody");
+  tableBody.innerHTML = "";
+  db.ref("users").orderByChild("role").equalTo("normal_user").on("value", snapshot=>{
+    snapshot.forEach(userSnap=>{
+      const user = userSnap.val();
+      const uid = userSnap.key;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${user.fullname}</td>
+        <td>${user.email}</td>
+        <td>${user.status}</td>
+        <td>
+          ${user.status==="blocked"?`<button class="button unblock" onclick="unblockUser('${uid}')">Unblock</button>`:
+          `<button class="button block" onclick="blockUser('${uid}')">Block</button>`}
+          <button class="button view" onclick="viewUserProfile('${uid}')">View Profile</button>
+        </td>
+      `;
+      tableBody.appendChild(tr);
+    });
+  });
+}
+
+// -------------------- Approve / Reject Model --------------------
+function approveModel(uid){ db.ref("users/"+uid).update({status:"active"}); }
+function rejectModel(uid){ db.ref("users/"+uid).update({status:"rejected"}); }
+
+// -------------------- Block / Unblock User --------------------
+function blockUser(uid){ db.ref("users/"+uid).update({status:"blocked"}); }
+function unblockUser(uid){ db.ref("users/"+uid).update({status:"active"}); }
+
+// -------------------- View Profiles --------------------
+function viewModelProfile(uid){ window.location.href=`admin_model_profile.html?uid=${uid}`; }
+function viewUserProfile(uid){ window.location.href=`admin_user_profile.html?uid=${uid}`; }
+
+// -------------------- Monitoring Functions --------------------
+function monitorLiveVideo(){
+  document.getElementById("monitorPanel").innerHTML="Live Video Calls:<br>";
+  db.ref("calls").orderByChild("type").equalTo("video").on("child_added", snap=>{
+    const call = snap.val();
+    document.getElementById("monitorPanel").innerHTML +=
+      `From: ${call.from} → To: ${call.to} | Status: ${call.status}<br>`;
+  });
+}
+function monitorLiveAudio(){
+  document.getElementById("monitorPanel").innerHTML="Live Audio Calls:<br>";
+  db.ref("calls").orderByChild("type").equalTo("audio").on("child_added", snap=>{
+    const call = snap.val();
+    document.getElementById("monitorPanel").innerHTML +=
+      `From: ${call.from} → To: ${call.to} | Status: ${call.status}<br>`;
+  });
+}
+function monitorChats(){
+  document.getElementById("monitorPanel").innerHTML="Chats:<br>";
+  db.ref("chats").on("child_added", snap=>{
+    const chat = snap.val();
+    document.getElementById("monitorPanel").innerHTML +=
+      `${chat.from} → ${chat.to}: ${chat.message}<br>`;
+  });
+}
+function monitorTransactions(){
+  document.getElementById("monitorPanel").innerHTML="Transactions:<br>";
+  db.ref("transactions").once("value").then(snapshot=>{
+    snapshot.forEach(snap=>{
+      const txn = snap.val();
+      document.getElementById("monitorPanel").innerHTML +=
+        `User: ${txn.userId} → Model: ${txn.modelId} | Type: ${txn.type} | Amount: ${txn.amount} Love | Status: ${txn.status}<br>`;
+    });
+  });
+}
+
+// -------------------- Initial Load --------------------
+loadModels();
+loadUsers();
+</script>
+</body>
+</html>
